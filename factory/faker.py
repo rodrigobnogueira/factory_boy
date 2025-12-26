@@ -23,11 +23,14 @@ from . import declarations
 
 
 class Faker(declarations.BaseDeclaration):
-    """Wrapper for 'faker' values.
+    """Wrapper for ' faker' values.
 
     Args:
         provider (str): the name of the Faker field
         locale (str): the locale to use for the faker
+        unique (bool): if True, use Faker's .unique to ensure all generated
+            values are globally unique for this provider/locale combination
+            (default: False)
 
         All other kwargs will be passed to the underlying provider
         (e.g ``factory.Faker('ean', length=10)``
@@ -35,18 +38,28 @@ class Faker(declarations.BaseDeclaration):
 
     Usage:
         >>> foo = factory.Faker('name')
+        >>> unique_email = factory.Faker('email', unique=True)
+
+    Note:
+        When using unique=True, Faker maintains a global cache of generated values.
+        Clear it between independent tests with: factory.Faker._get_faker().unique.clear()
     """
+
     def __init__(self, provider, **kwargs):
-        locale = kwargs.pop('locale', None)
+        locale = kwargs.pop("locale", None)
+        unique = kwargs.pop("unique", False)
         self.provider = provider
-        super().__init__(
-            locale=locale,
-            **kwargs)
+        self.unique = unique
+        super().__init__(locale=locale, **kwargs)
 
     def evaluate(self, instance, step, extra):
-        locale = extra.pop('locale')
+        locale = extra.pop("locale")
         subfaker = self._get_faker(locale)
-        return subfaker.format(self.provider, **extra)
+
+        if self.unique:
+            return subfaker.unique.format(self.provider, **extra)
+        else:
+            return subfaker.format(self.provider, **extra)
 
     _FAKER_REGISTRY: Dict[str, faker.Faker] = {}
     _DEFAULT_LOCALE = faker.config.DEFAULT_LOCALE

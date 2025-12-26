@@ -7,7 +7,7 @@ import typing as T
 
 from . import enums, errors, utils
 
-logger = logging.getLogger('factory.generate')
+logger = logging.getLogger("factory.generate")
 
 
 class BaseDeclaration(utils.OrderedBase):
@@ -45,6 +45,7 @@ class BaseDeclaration(utils.OrderedBase):
             return full_context
 
         import factory.base
+
         subfactory = factory.base.DictFactory
         return step.recurse(subfactory, full_context, force_sequence=step.sequence)
 
@@ -76,7 +77,7 @@ class BaseDeclaration(utils.OrderedBase):
             extra (dict): additional, call-time added kwargs
                 for the step.
         """
-        raise NotImplementedError('This is an abstract method')
+        raise NotImplementedError("This is an abstract method")
 
 
 class OrderedDeclaration(BaseDeclaration):
@@ -130,11 +131,12 @@ class Transformer(BaseDeclaration):
         The forced value can be any declaration, and will be evaluated as if it
         had been passed instead of the Transformer declaration.
         """
+
         def __init__(self, forced_value):
             self.forced_value = forced_value
 
         def __repr__(self):
-            return f'Transformer.Force({repr(self.forced_value)})'
+            return f"Transformer.Force({repr(self.forced_value)})"
 
     def __init__(self, default, *, transform):
         super().__init__()
@@ -162,6 +164,133 @@ class Transformer(BaseDeclaration):
         return self.transform(value)
 
 
+def _make_hashable(value: object) -> object:
+    """Recursively convert a value to a hashable type for set operations.
+
+    Handles nested structures by recursively converting their contents.
+    Raises TypeError for types that cannot be made hashable.
+    """
+    if isinstance(value, (str, bytes, int, float, bool, type(None))):
+        return value
+    if isinstance(value, tuple):
+        return tuple(_make_hashable(v) for v in value)
+    if isinstance(value, list):
+        return tuple(_make_hashable(v) for v in value)
+    if isinstance(value, dict):
+        return tuple(
+            sorted((_make_hashable(k), _make_hashable(v)) for k, v in value.items())
+        )
+    if isinstance(value, (set, frozenset)):
+        return frozenset(_make_hashable(v) for v in value)
+    try:
+        hash(value)
+        return value
+    except TypeError:
+        raise TypeError(
+            f"Cannot make {type(value).__name__} hashable for exclusion check"
+        )
+
+
+def _to_iterable(value: object) -> tuple | list | set | frozenset:
+    """Convert a value to an iterable, wrapping single values in a tuple."""
+    if value is None:
+        return ()
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return value
+    return (value,)
+
+
+class Excluding(OrderedDeclaration):
+    """Generate value from base declaration, excluding specified values.
+
+    Retries generation when an excluded value is produced. Supports both
+    static exclusion lists and dynamic exclusions via declarations.
+
+    Args:
+        base: The base declaration (or plain value) to generate values from
+        exclude: Value(s) to exclude. Can be:
+            - A single value
+            - An iterable of values (list, tuple, set)
+            - A declaration that returns value(s) to exclude (e.g., SelfAttribute)
+        max_retries: Maximum generation attempts before raising ValueError (default: 50)
+
+    Raises:
+        ValueError: When max_retries exceeded without finding a non-excluded value
+        TypeError: When exclusion values cannot be made hashable
+
+    Examples:
+        # Exclude specific values from FuzzyChoice
+        status = Excluding(
+            FuzzyChoice(['active', 'inactive', 'pending', 'banned']),
+            exclude=['banned', 'inactive']
+        )
+
+        # Exclude a single value from Faker
+        email = Excluding(
+            Faker('email'),
+            exclude='admin@example.com'
+        )
+
+        # Dynamically exclude based on another field
+        class UserFactory(factory.Factory):
+            class Meta:
+                model = User
+
+            primary_language = FuzzyChoice(['en', 'fr', 'de', 'es'])
+            secondary_language = Excluding(
+                FuzzyChoice(['en', 'fr', 'de', 'es']),
+                exclude=SelfAttribute('primary_language')
+            )
+    """
+
+    def __init__(
+        self,
+        base: "BaseDeclaration | object",
+        exclude: "BaseDeclaration | object" = (),
+        max_retries: int = 50,
+    ) -> None:
+        super().__init__()
+        self.base = base
+        self.exclude_declaration = exclude
+        self.max_retries = max_retries
+
+    def evaluate(self, instance: object, step: object, extra: dict) -> object:
+        """Evaluate with retry logic for excluded values."""
+        excluded_values = self._resolve_exclusions(instance, step)
+        excluded_set = frozenset(_make_hashable(v) for v in excluded_values)
+
+        if not isinstance(self.base, BaseDeclaration):
+            value = self.base
+            if _make_hashable(value) in excluded_set:
+                raise ValueError(
+                    f"Plain value {value!r} is excluded and cannot be generated. "
+                    f"Excluded: {self._format_exclusions(excluded_values)}."
+                )
+            return value
+
+        for _ in range(self.max_retries):
+            value = self.base.evaluate_pre(instance, step, {})
+            if _make_hashable(value) not in excluded_set:
+                return value
+
+        raise ValueError(
+            f"Could not generate a non-excluded value after {self.max_retries} attempts. "
+            f"Excluded: {self._format_exclusions(excluded_values)}. "
+            f"Consider reducing exclusions or increasing max_retries."
+        )
+
+    def _resolve_exclusions(self, instance: object, step: object) -> list:
+        """Resolve exclusion values, evaluating declarations if needed."""
+        if isinstance(self.exclude_declaration, BaseDeclaration):
+            excluded_value = self.exclude_declaration.evaluate(instance, step, {})
+            return list(_to_iterable(excluded_value))
+        return list(_to_iterable(self.exclude_declaration))
+
+    def _format_exclusions(self, excluded_values: list) -> str:
+        """Format exclusion values for error messages."""
+        return ", ".join(repr(v) for v in sorted(excluded_values, key=str))
+
+
 class _UNSPECIFIED:
     pass
 
@@ -183,8 +312,8 @@ def deepgetattr(obj, name, default=_UNSPECIFIED):
         AttributeError: if obj has no 'name' attribute.
     """
     try:
-        if '.' in name:
-            attr, subname = name.split('.', 1)
+        if "." in name:
+            attr, subname = name.split(".", 1)
             return deepgetattr(getattr(obj, attr), subname, default)
         else:
             return getattr(obj, name)
@@ -210,7 +339,7 @@ class SelfAttribute(BaseDeclaration):
 
     def __init__(self, attribute_name, default=_UNSPECIFIED):
         super().__init__()
-        depth = len(attribute_name) - len(attribute_name.lstrip('.'))
+        depth = len(attribute_name) - len(attribute_name.lstrip("."))
         attribute_name = attribute_name[depth:]
 
         self.depth = depth
@@ -224,11 +353,13 @@ class SelfAttribute(BaseDeclaration):
         else:
             target = instance
 
-        logger.debug("SelfAttribute: Picking attribute %r on %r", self.attribute_name, target)
+        logger.debug(
+            "SelfAttribute: Picking attribute %r on %r", self.attribute_name, target
+        )
         return deepgetattr(target, self.attribute_name, self.default)
 
     def __repr__(self):
-        return '<%s(%r, default=%r)>' % (
+        return "<%s(%r, default=%r)>" % (
             self.__class__.__name__,
             self.attribute_name,
             self.default,
@@ -251,7 +382,9 @@ class Iterator(BaseDeclaration):
         self.iterator = None
 
         if cycle:
-            self.iterator_builder = lambda: utils.ResetableIterator(itertools.cycle(iterator))
+            self.iterator_builder = lambda: utils.ResetableIterator(
+                itertools.cycle(iterator)
+            )
         else:
             self.iterator_builder = lambda: utils.ResetableIterator(iterator)
 
@@ -282,12 +415,17 @@ class Sequence(BaseDeclaration):
         function (function): A function, expecting the current sequence counter
             and returning the computed value.
     """
+
     def __init__(self, function):
         super().__init__()
         self.function = function
 
     def evaluate(self, instance, step, extra):
-        logger.debug("Sequence: Computing next value of %r for seq=%s", self.function, step.sequence)
+        logger.debug(
+            "Sequence: Computing next value of %r for seq=%s",
+            self.function,
+            step.sequence,
+        )
         return self.function(int(step.sequence))
 
 
@@ -300,10 +438,14 @@ class LazyAttributeSequence(Sequence):
         type (function): A function converting an integer into the expected kind
             of counter for the 'function' attribute.
     """
+
     def evaluate(self, instance, step, extra):
         logger.debug(
             "LazyAttributeSequence: Computing next value of %r for seq=%s, obj=%r",
-            self.function, step.sequence, instance)
+            self.function,
+            step.sequence,
+            instance,
+        )
         return self.function(instance, int(step.sequence))
 
 
@@ -316,6 +458,7 @@ class ContainerAttribute(BaseDeclaration):
         strict (bool): Whether evaluating should fail when the containers are
             not passed in (i.e used outside a SubFactory).
     """
+
     def __init__(self, function, strict=True):
         super().__init__()
         self.function = function
@@ -336,7 +479,8 @@ class ContainerAttribute(BaseDeclaration):
         if self.strict and not chain:
             raise TypeError(
                 "A ContainerAttribute in 'strict' mode can only be used "
-                "within a SubFactory.")
+                "within a SubFactory."
+            )
 
         return self.function(instance, chain)
 
@@ -388,18 +532,20 @@ class _FactoryWrapper:
     Such args can be either a Factory subclass, or a fully qualified import
     path for that subclass (e.g 'myapp.factories.MyFactory').
     """
+
     def __init__(self, factory_or_path):
         self.factory = None
-        self.module = self.name = ''
+        self.module = self.name = ""
         if isinstance(factory_or_path, type):
             self.factory = factory_or_path
         else:
-            if not (isinstance(factory_or_path, str) and '.' in factory_or_path):
+            if not (isinstance(factory_or_path, str) and "." in factory_or_path):
                 raise ValueError(
                     "A factory= argument must receive either a class "
                     "or the fully qualified path to a Factory subclass; got "
-                    "%r instead." % factory_or_path)
-            self.module, self.name = factory_or_path.rsplit('.', 1)
+                    "%r instead." % factory_or_path
+                )
+            self.module, self.name = factory_or_path.rsplit(".", 1)
 
     def get(self):
         if self.factory is None:
@@ -411,9 +557,9 @@ class _FactoryWrapper:
 
     def __repr__(self):
         if self.factory is None:
-            return f'<_FactoryImport: {self.module}.{self.name}>'
+            return f"<_FactoryImport: {self.module}.{self.name}>"
         else:
-            return f'<_FactoryImport: {self.factory.__class__}>'
+            return f"<_FactoryImport: {self.factory.__class__}>"
 
 
 class SubFactory(BaseDeclaration):
@@ -449,7 +595,8 @@ class SubFactory(BaseDeclaration):
         subfactory = self.get_factory()
         logger.debug(
             "SubFactory: Instantiating %s.%s(%s), create=%r",
-            subfactory.__module__, subfactory.__name__,
+            subfactory.__module__,
+            subfactory.__name__,
             utils.log_pprint(kwargs=extra),
             step,
         )
@@ -462,7 +609,7 @@ class Dict(SubFactory):
 
     FORCE_SEQUENCE = True
 
-    def __init__(self, params, dict_factory='factory.DictFactory'):
+    def __init__(self, params, dict_factory="factory.DictFactory"):
         super().__init__(dict_factory, **dict(params))
 
 
@@ -471,7 +618,7 @@ class List(SubFactory):
 
     FORCE_SEQUENCE = True
 
-    def __init__(self, params, list_factory='factory.ListFactory'):
+    def __init__(self, params, list_factory="factory.ListFactory"):
         params = {str(i): v for i, v in enumerate(params)}
         super().__init__(list_factory, **params)
 
@@ -501,15 +648,19 @@ class Maybe(BaseDeclaration):
         self.no = no_declaration
 
         phases = {
-            'yes_declaration': enums.get_builder_phase(yes_declaration),
-            'no_declaration': enums.get_builder_phase(no_declaration),
+            "yes_declaration": enums.get_builder_phase(yes_declaration),
+            "no_declaration": enums.get_builder_phase(no_declaration),
         }
         used_phases = {phase for phase in phases.values() if phase is not None}
 
         if len(used_phases) > 1:
             raise TypeError(f"Inconsistent phases for {self!r}: {phases!r}")
 
-        self.FACTORY_BUILDER_PHASE = used_phases.pop() if used_phases else enums.BuilderPhase.ATTRIBUTE_RESOLUTION
+        self.FACTORY_BUILDER_PHASE = (
+            used_phases.pop()
+            if used_phases
+            else enums.BuilderPhase.ATTRIBUTE_RESOLUTION
+        )
 
     def evaluate_post(self, instance, step, overrides):
         """Handle post-generation declarations"""
@@ -518,11 +669,13 @@ class Maybe(BaseDeclaration):
             # Note: we work on the *builder stub*, not on the actual instance.
             # This gives us access to all Params-level definitions.
             choice = self.decider.evaluate_pre(
-                instance=step.stub, step=step, overrides=overrides)
+                instance=step.stub, step=step, overrides=overrides
+            )
         else:
             assert decider_phase == enums.BuilderPhase.POST_INSTANTIATION
             choice = self.decider.evaluate_post(
-                instance=instance, step=step, overrides={})
+                instance=instance, step=step, overrides={}
+            )
 
         target = self.yes if choice else self.no
         if enums.get_builder_phase(target) == enums.BuilderPhase.POST_INSTANTIATION:
@@ -548,7 +701,7 @@ class Maybe(BaseDeclaration):
         )
 
     def __repr__(self):
-        return f'Maybe({self.decider!r}, yes={self.yes!r}, no={self.no!r})'
+        return f"Maybe({self.decider!r}, yes={self.yes!r}, no={self.no!r})"
 
 
 class Parameter(utils.OrderedBase):
@@ -596,6 +749,7 @@ class SimpleParameter(Parameter):
 
 class Trait(Parameter):
     """The simplest complex parameter, it enables a bunch of new declarations based on a boolean flag."""
+
     def __init__(self, **overrides):
         super().__init__()
         self.overrides = overrides
@@ -605,8 +759,9 @@ class Trait(Parameter):
         for maybe_field, new_value in self.overrides.items():
             overrides[maybe_field] = Maybe(
                 decider=SelfAttribute(
-                    '%s.%s' % (
-                        '.' * maybe_field.count(enums.SPLITTER),
+                    "%s.%s"
+                    % (
+                        "." * maybe_field.count(enums.SPLITTER),
                         field_name,
                     ),
                     default=False,
@@ -621,9 +776,9 @@ class Trait(Parameter):
         return [param for param in parameters if param in self.overrides]
 
     def __repr__(self):
-        return '%s(%s)' % (
+        return "%s(%s)" % (
             self.__class__.__name__,
-            ', '.join('%s=%r' % t for t in self.overrides.items())
+            ", ".join("%s=%r" % t for t in self.overrides.items()),
         )
 
 
@@ -645,9 +800,9 @@ class PostGenerationDeclaration(BaseDeclaration):
     def evaluate_post(self, instance, step, overrides):
         context = self.unroll_context(instance, step, overrides)
         postgen_context = PostGenerationContext(
-            value_provided=bool('' in context),
-            value=context.get(''),
-            extra={k: v for k, v in context.items() if k != ''},
+            value_provided=bool("" in context),
+            value=context.get(""),
+            extra={k: v for k, v in context.items() if k != ""},
         )
         return self.call(instance, step, postgen_context)
 
@@ -665,6 +820,7 @@ class PostGenerationDeclaration(BaseDeclaration):
 
 class PostGeneration(PostGenerationDeclaration):
     """Calls a given function once the object has been generated."""
+
     def __init__(self, function):
         super().__init__()
         self.function = function
@@ -680,8 +836,7 @@ class PostGeneration(PostGenerationDeclaration):
             ),
         )
         create = step.builder.strategy == enums.CREATE_STRATEGY
-        return self.function(
-            instance, create, context.value, **context.extra)
+        return self.function(instance, create, context.value, **context.extra)
 
 
 class RelatedFactory(PostGenerationDeclaration):
@@ -696,7 +851,7 @@ class RelatedFactory(PostGenerationDeclaration):
 
     UNROLL_CONTEXT_BEFORE_EVALUATION = False
 
-    def __init__(self, factory, factory_related_name='', **defaults):
+    def __init__(self, factory, factory_related_name="", **defaults):
         super().__init__()
 
         self.name = factory_related_name
@@ -715,7 +870,8 @@ class RelatedFactory(PostGenerationDeclaration):
             logger.debug(
                 "RelatedFactory: Using provided %r instead of generating %s.%s.",
                 context.value,
-                factory.__module__, factory.__name__,
+                factory.__module__,
+                factory.__name__,
             )
             return context.value
 
@@ -745,7 +901,7 @@ class RelatedFactoryList(RelatedFactory):
             returning a list of 'factory' objects w/ size 'size'.
     """
 
-    def __init__(self, factory, factory_related_name='', size=2, **defaults):
+    def __init__(self, factory, factory_related_name="", size=2, **defaults):
         self.size = size
         super().__init__(factory, factory_related_name, **defaults)
 
@@ -774,6 +930,7 @@ class PostGenerationMethodCall(PostGenerationDeclaration):
             ...
             password = factory.PostGenerationMethodCall('set_pass', password='')
     """
+
     def __init__(self, method_name, *args, **kwargs):
         super().__init__()
         if len(args) > 1:

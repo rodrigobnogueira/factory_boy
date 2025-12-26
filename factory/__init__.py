@@ -14,6 +14,7 @@ from .base import (
 from .declarations import (
     ContainerAttribute,
     Dict,
+    Excluding,
     Iterator,
     LazyAttribute,
     LazyAttributeSequence,
@@ -71,5 +72,5 @@ try:
 except ImportError:
     pass
 
-__author__ = 'Raphaël Barrois <raphael.barrois+fboy@polytechnique.org>'
+__author__ = "Raphaël Barrois <raphael.barrois+fboy@polytechnique.org>"
 __version__ = importlib.metadata.version("factory_boy")
