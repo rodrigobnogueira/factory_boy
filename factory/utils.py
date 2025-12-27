@@ -5,6 +5,30 @@ import collections
 import importlib
 
 
+class _MissingSentinel:
+    """Sentinel value to mark dictionary items that should be excluded.
+
+    When used as a value in DictFactory, the corresponding key will be
+    completely omitted from the generated dictionary.
+    """
+
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "<MISSING>"
+
+    def __bool__(self) -> bool:
+        return False
+
+
+MISSING = _MissingSentinel()
+
+
 def import_object(module_name, attribute_name):
     """Import an object from its absolute path.
 

@@ -33,6 +33,7 @@ from .declarations import (
 from .enums import BUILD_STRATEGY, CREATE_STRATEGY, STUB_STRATEGY
 from .errors import FactoryError
 from .faker import Faker
+from .utils import MISSING
 from .helpers import (
     build,
     build_batch,
