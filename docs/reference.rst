@@ -136,6 +136,26 @@ Meta options
         .. versionadded: 2.6.0
 
 
+    .. attribute:: literal_keys
+
+        Some models might use field names containing double underscores (``__``), which conflict with factory_boy's deep context parsing.
+        Exceptions are raised when such keys are encountered.
+
+        To avoid this, list the conflicting field names in :attr:`literal_keys`:
+
+        .. code-block:: python
+
+            class ServiceFactory(factory.Factory):
+                class Meta:
+                    model = Service
+                    literal_keys = ['service__name']
+
+                service__name = "foo"
+
+        .. versionadded:: 3.3.4
+
+
+
     .. attribute:: strategy
 
         Use this attribute to change the strategy used by a :class:`Factory`.

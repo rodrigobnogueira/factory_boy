@@ -22,10 +22,14 @@ class DeclarationSet:
     DeclarationWithContext, containing field name, declaration object and extra context.
     """
 
-    def __init__(self, initial=None):
+    def __init__(self, initial=None, literal_keys=None):
+        self.literal_keys = set(literal_keys) if literal_keys else set()
         self.declarations = {}
         self.contexts = collections.defaultdict(dict)
         self.update(initial or {})
+
+    def add_literal_keys(self, keys):
+        self.literal_keys.update(keys)
 
     @classmethod
     def split(cls, entry):
@@ -55,7 +59,7 @@ class DeclarationSet:
         return enums.SPLITTER.join((root, subkey))
 
     def copy(self):
-        return self.__class__(self.as_dict())
+        return self.__class__(self.as_dict(), literal_keys=self.literal_keys)
 
     def update(self, values):
         """Add new declarations to this set/
@@ -64,7 +68,11 @@ class DeclarationSet:
             values (dict(name, declaration)): the declarations to ingest.
         """
         for k, v in values.items():
-            root, sub = self.split(k)
+            if k in self.literal_keys:
+                root, sub = k, None
+            else:
+                root, sub = self.split(k)
+
             if sub is None:
                 self.declarations[root] = v
             else:
@@ -72,16 +80,26 @@ class DeclarationSet:
 
         extra_context_keys = set(self.contexts) - set(self.declarations)
         if extra_context_keys:
-            raise errors.InvalidDeclarationError(
-                "Received deep context for unknown fields: %r (known=%r)" % (
-                    {
-                        self.join(root, sub): v
-                        for root in extra_context_keys
-                        for sub, v in self.contexts[root].items()
-                    },
-                    sorted(self.declarations),
-                )
+            msg = "Received deep context for unknown fields: %r (known=%r)" % (
+                {
+                    self.join(root, sub): v
+                    for root in extra_context_keys
+                    for sub, v in self.contexts[root].items()
+                },
+                sorted(self.declarations),
             )
+            # Check for double-underscores in the unknown keys
+            suspicious_keys = [
+                self.join(root, sub)
+                for root in extra_context_keys
+                for sub in self.contexts[root]
+                if enums.SPLITTER in self.join(root, sub)
+            ]
+            if suspicious_keys:
+                msg += ("\nDid you mean to use Meta.literal_keys=['%s']?"
+                        % "', '".join(sorted(suspicious_keys)))
+
+            raise errors.InvalidDeclarationError(msg)
 
     def filter(self, entries):
         """Filter a set of declarations: keep only those related to this object.
@@ -142,9 +160,11 @@ def _captures_overrides(declaration_with_context):
         return False
 
 
-def parse_declarations(decls, base_pre=None, base_post=None):
+def parse_declarations(decls, base_pre=None, base_post=None, literal_keys=None):
     pre_declarations = base_pre.copy() if base_pre else DeclarationSet()
     post_declarations = base_post.copy() if base_post else DeclarationSet()
+    if literal_keys:
+        pre_declarations.add_literal_keys(literal_keys)
 
     # Inject extra declarations, splitting between known-to-be-post and undetermined
     extra_post = {}

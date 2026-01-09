@@ -7,6 +7,8 @@ ChangeLog
 ------------------
 
 - Add support for Django 5.2
+- Add :attr:`~factory.FactoryOptions.literal_keys` to prevent deep context parsing for specific fields
+
 
 
 3.3.3 (2025-02-03)

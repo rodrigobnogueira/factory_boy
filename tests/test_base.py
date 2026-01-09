@@ -538,3 +538,38 @@ class PostGenerationParsingTestCase(unittest.TestCase):
 
         self.assertIn('foo', TestObjectFactory._meta.post_declarations.as_dict())
         self.assertIn('foo__bar', TestObjectFactory._meta.post_declarations.as_dict())
+
+
+class LiteralKeysTestCase(unittest.TestCase):
+    def test_literal_keys(self):
+        class TestObjectFactory(base.Factory):
+            class Meta:
+                model = TestObject
+                literal_keys = ['foo__bar']
+
+            foo__bar = 42
+
+        self.assertIn('foo__bar', TestObjectFactory._meta.pre_declarations.declarations)
+        self.assertNotIn('foo', TestObjectFactory._meta.pre_declarations.declarations)
+        self.assertEqual(42, TestObjectFactory._meta.pre_declarations.declarations['foo__bar'])
+
+    def test_literal_keys_inheritance(self):
+        class TestObjectFactory(base.Factory):
+            class Meta:
+                model = TestObject
+                literal_keys = ['foo__bar']
+
+            foo__bar = 42
+
+        class SubFactory(TestObjectFactory):
+            pass
+
+    def test_literal_keys_missing_raises_error(self):
+        with self.assertRaises(errors.InvalidDeclarationError) as cm:
+            class TestObjectFactory(base.Factory):
+                class Meta:
+                    model = TestObject
+
+                foo__bar = 42
+
+        self.assertIn("Did you mean to use Meta.literal_keys=['foo__bar']?", str(cm.exception))

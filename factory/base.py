@@ -176,6 +176,7 @@ class FactoryOptions:
             OptionDefault('abstract', False, inherit=False),
             OptionDefault('strategy', enums.CREATE_STRATEGY, inherit=True),
             OptionDefault('inline_args', (), inherit=True),
+            OptionDefault('literal_keys', [], inherit=True),
             OptionDefault('exclude', (), inherit=True),
             OptionDefault('rename', {}, inherit=True),
         ]
@@ -235,7 +236,10 @@ class FactoryOptions:
 
         self._check_parameter_dependencies(self.parameters)
 
-        self.pre_declarations, self.post_declarations = builder.parse_declarations(self.declarations)
+        self.pre_declarations, self.post_declarations = builder.parse_declarations(
+            self.declarations,
+            literal_keys=self.literal_keys,
+        )
 
     def _get_counter_reference(self):
         """Identify which factory should be used for a shared counter."""
