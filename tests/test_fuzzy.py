@@ -7,7 +7,7 @@ import unittest
 import warnings
 from unittest import mock
 
-from factory import fuzzy, random
+from factory import Factory, LazyAttribute, LazyFunction, SelfAttribute, fuzzy, random
 
 from . import utils
 
@@ -78,6 +78,47 @@ class FuzzyChoiceTestCase(unittest.TestCase):
         res = utils.evaluate_declaration(d)
         self.assertIn(res, [1, 2, 3])
 
+    def test_lazy_attribute_as_choices(self):
+        """Issue #1050: FuzzyChoice should accept LazyAttribute."""
+
+        class MyFactory(Factory):
+            class Meta:
+                model = dict
+            country = fuzzy.FuzzyChoice(
+                LazyAttribute(lambda o: ['AU', 'GB', 'DE', 'US'])
+            )
+
+        for _i in range(5):
+            result = MyFactory()
+            self.assertIn(result['country'], ['AU', 'GB', 'DE', 'US'])
+
+    def test_lazy_function_as_choices(self):
+        """Issue #1050: FuzzyChoice should accept LazyFunction."""
+
+        class MyFactory(Factory):
+            class Meta:
+                model = dict
+            country = fuzzy.FuzzyChoice(
+                LazyFunction(lambda: ['X', 'Y', 'Z'])
+            )
+
+        for _i in range(5):
+            result = MyFactory()
+            self.assertIn(result['country'], ['X', 'Y', 'Z'])
+
+    def test_self_attribute_as_choices(self):
+        """Issue #1050: FuzzyChoice should accept SelfAttribute."""
+
+        class MyFactory(Factory):
+            class Meta:
+                model = dict
+            choices_tuple = ('AU', 'GB', 'DE', 'US')
+            country = fuzzy.FuzzyChoice(SelfAttribute('choices_tuple'))
+
+        for _i in range(5):
+            result = MyFactory()
+            self.assertIn(result['country'], ('AU', 'GB', 'DE', 'US'))
+
 
 class FuzzyIntegerTestCase(unittest.TestCase):
     def test_definition(self):
@@ -121,6 +162,23 @@ class FuzzyIntegerTestCase(unittest.TestCase):
             res = utils.evaluate_declaration(fuzz)
 
         self.assertEqual((5 + 8 + 1) * 3, res)
+
+    def test_lazy_attribute_as_bounds(self):
+        """FuzzyInteger should accept LazyAttribute for low/high."""
+
+        class MyFactory(Factory):
+            class Meta:
+                model = dict
+            low_bound = 5
+            value = fuzzy.FuzzyInteger(
+                LazyAttribute(lambda o: o.low_bound),
+                LazyAttribute(lambda o: o.low_bound + 5)
+            )
+
+        for _i in range(5):
+            result = MyFactory()
+            self.assertGreaterEqual(result['value'], 5)
+            self.assertLessEqual(result['value'], 10)
 
 
 class FuzzyDecimalTestCase(unittest.TestCase):
@@ -193,6 +251,23 @@ class FuzzyDecimalTestCase(unittest.TestCase):
         finally:
             decimal_context.traps[decimal.FloatOperation] = old_traps
 
+    def test_lazy_attribute_as_bounds(self):
+        """FuzzyDecimal should accept LazyAttribute for low/high."""
+
+        class MyFactory(Factory):
+            class Meta:
+                model = dict
+            low_bound = 5.0
+            value = fuzzy.FuzzyDecimal(
+                LazyAttribute(lambda o: o.low_bound),
+                LazyAttribute(lambda o: o.low_bound + 5.0)
+            )
+
+        for _i in range(5):
+            result = MyFactory()
+            self.assertGreaterEqual(result['value'], decimal.Decimal('5.0'))
+            self.assertLessEqual(result['value'], decimal.Decimal('10.0'))
+
 
 class FuzzyFloatTestCase(unittest.TestCase):
     def test_definition(self):
@@ -253,6 +328,23 @@ class FuzzyFloatTestCase(unittest.TestCase):
 
         self.assertEqual(8.001, res)
 
+    def test_lazy_attribute_as_bounds(self):
+        """FuzzyFloat should accept LazyAttribute for low/high."""
+
+        class MyFactory(Factory):
+            class Meta:
+                model = dict
+            low_bound = 5.0
+            value = fuzzy.FuzzyFloat(
+                LazyAttribute(lambda o: o.low_bound),
+                LazyAttribute(lambda o: o.low_bound + 5.0)
+            )
+
+        for _i in range(5):
+            result = MyFactory()
+            self.assertGreaterEqual(result['value'], 5.0)
+            self.assertLessEqual(result['value'], 10.0)
+
 
 class FuzzyDateTestCase(unittest.TestCase):
     @classmethod
@@ -311,6 +403,37 @@ class FuzzyDateTestCase(unittest.TestCase):
             res = utils.evaluate_declaration(fuzz)
 
         self.assertEqual(datetime.date(2013, 1, 2), res)
+
+    def test_lazy_attribute_as_bounds(self):
+        """FuzzyDate should accept LazyAttribute for start/end dates."""
+
+        class MyFactory(Factory):
+            class Meta:
+                model = dict
+            base_date = datetime.date(2013, 1, 10)
+            value = fuzzy.FuzzyDate(
+                LazyAttribute(lambda o: o.base_date),
+                LazyAttribute(lambda o: o.base_date + datetime.timedelta(days=10))
+            )
+
+        for _i in range(5):
+            result = MyFactory()
+            self.assertGreaterEqual(result['value'], datetime.date(2013, 1, 10))
+            self.assertLessEqual(result['value'], datetime.date(2013, 1, 20))
+
+    def test_self_attribute_as_bounds(self):
+        """FuzzyDate should accept SelfAttribute for start/end dates."""
+
+        class MyFactory(Factory):
+            class Meta:
+                model = dict
+            since = datetime.date(2013, 1, 1)
+            value = fuzzy.FuzzyDate(start_date=SelfAttribute('since'))
+
+        for _i in range(5):
+            result = MyFactory()
+            self.assertGreaterEqual(result['value'], datetime.date(2013, 1, 1))
+            self.assertLessEqual(result['value'], datetime.date.today())
 
 
 class FuzzyNaiveDateTimeTestCase(unittest.TestCase):
@@ -547,6 +670,29 @@ class FuzzyDateTimeTestCase(unittest.TestCase):
             res = utils.evaluate_declaration(fuzz)
 
         self.assertEqual(datetime.datetime(2013, 1, 2, tzinfo=datetime.timezone.utc), res)
+
+    def test_lazy_attribute_as_bounds(self):
+        """FuzzyDateTime should accept LazyAttribute for start/end datetimes."""
+
+        class MyFactory(Factory):
+            class Meta:
+                model = dict
+            base_dt = datetime.datetime(2013, 1, 10, tzinfo=datetime.timezone.utc)
+            value = fuzzy.FuzzyDateTime(
+                LazyAttribute(lambda o: o.base_dt),
+                LazyAttribute(lambda o: o.base_dt + datetime.timedelta(days=10))
+            )
+
+        for _i in range(5):
+            result = MyFactory()
+            self.assertGreaterEqual(
+                result['value'],
+                datetime.datetime(2013, 1, 10, tzinfo=datetime.timezone.utc)
+            )
+            self.assertLessEqual(
+                result['value'],
+                datetime.datetime(2013, 1, 20, tzinfo=datetime.timezone.utc)
+            )
 
 
 class FuzzyTextTestCase(unittest.TestCase):
