@@ -157,12 +157,9 @@ class Transformer(BaseDeclaration):
             step=step,
             overrides=overrides,
         )
-
-        from .utils import MISSING
-        if bypass_transform or value is MISSING:
+        if bypass_transform or value is SKIP:
             return value
         return self.transform(value)
-
 
 
 class _UNSPECIFIED:
