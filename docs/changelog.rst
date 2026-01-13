@@ -7,6 +7,7 @@ ChangeLog
 ------------------
 
 - Add support for Django 5.2
+- Export :data:`~factory.declarations.SKIP` sentinel to public API for excluding keys from :class:`~factory.DictFactory`
 
 
 3.3.3 (2025-02-03)

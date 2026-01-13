@@ -1553,6 +1553,22 @@ with the :class:`Dict` and :class:`List` attributes:
         The actual factory to use for generating the dict can be set as a keyword
         argument, if an exotic dictionary-like object (SortedDict, ...) is required.
 
+    To exclude a key from the generated dictionary, use :data:`factory.SKIP`:
+
+    .. code-block:: python
+
+        class ConfigFactory(factory.DictFactory):
+            host = "localhost"
+            port = 8080
+            debug = factory.SKIP  # This key will be omitted
+
+    .. code-block:: pycon
+
+        >>> ConfigFactory()
+        {'host': 'localhost', 'port': 8080}
+        >>> ConfigFactory(debug=True)  # Override to include the key
+        {'host': 'localhost', 'port': 8080, 'debug': True}
+
 
 .. class:: List(items[, list_factory=factory.ListFactory])
 
