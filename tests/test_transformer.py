@@ -228,3 +228,31 @@ class TransformerTraitTest(TestCase):
         self.assertEqual(instance.one, "ONE")
         self.assertEqual(instance.two, "two")
         self.assertIsNone(instance.three)
+
+
+class TransformerTraitWithBaseTest(TestCase):
+    """Tests for Transformer + Trait interaction when base Transformer exists.
+
+    Regression tests for issue #1119.
+    """
+    def test_base_transformer_applies_when_trait_inactive(self):
+        """When a trait is not active, the base transformer should still apply to overrides."""
+        class TestFactory(factory.StubFactory):
+            foo = factory.Transformer(123, transform=hex)
+
+            class Params:
+                string = factory.Trait(foo=factory.Transformer(234, transform=str))
+
+        instance = TestFactory(foo=345)
+        self.assertEqual(instance.foo, "0x159")
+
+    def test_trait_transformer_applies_when_trait_active(self):
+        """When a trait is active, the trait's transformer should apply."""
+        class TestFactory(factory.StubFactory):
+            foo = factory.Transformer(123, transform=hex)
+
+            class Params:
+                string = factory.Trait(foo=factory.Transformer(234, transform=str))
+
+        instance = TestFactory(string=True, foo=345)
+        self.assertEqual(instance.foo, "345")

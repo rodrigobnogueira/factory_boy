@@ -511,6 +511,8 @@ class Maybe(BaseDeclaration):
 
         self.FACTORY_BUILDER_PHASE = used_phases.pop() if used_phases else enums.BuilderPhase.ATTRIBUTE_RESOLUTION
 
+        self.CAPTURE_OVERRIDES = getattr(no_declaration, 'CAPTURE_OVERRIDES', False)
+
     def evaluate_post(self, instance, step, overrides):
         """Handle post-generation declarations"""
         decider_phase = enums.get_builder_phase(self.decider)
